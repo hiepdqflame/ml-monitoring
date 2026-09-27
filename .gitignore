@@ -1,0 +1,13 @@
+.venv/
+venv
+__pycache__/
+.env*
+!.env.example
+mlflow_data
+.DS_Store
+.pytest_cache/
+mlruns/
+reports/
+docs/superpowers/
+.gstack/
+.gstack/

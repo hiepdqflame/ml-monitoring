@@ -1,0 +1,233 @@
+name: ml-monitoring
+
+x-airflow: &airflow
+  image: ml-monitoring-airflow:local
+  build:
+    context: .
+    dockerfile: airflow/Dockerfile
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__PARALLELISM: "4"
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: "2"
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-local-monitoring-demo-key}
+    AIRFLOW__WEBSERVER__BASE_URL: http://localhost:${AIRFLOW_PORT:-18080}
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    PYTHONPATH: /opt/airflow
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    MODEL_NAME: wine_quality_model
+    MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    AWS_ACCESS_KEY_ID: minio
+    AWS_SECRET_ACCESS_KEY: minio123
+    API_URL: http://api:8000
+    EVIDENTLY_URL: http://evidently:8001
+    MLFLOW_PUBLIC_URL: http://localhost:${MONITOR_MLFLOW_PORT:-15000}
+    EVIDENTLY_PUBLIC_URL: http://localhost:${MONITOR_EVIDENTLY_PORT:-18011}
+    TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER:-admin}
+    AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+  volumes:
+    - airflow_logs:/opt/airflow/logs
+    - pipeline_data:/opt/airflow/pipeline_data
+  networks: [monitoring]
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD, pg_isready, -U, mlflow]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [monitoring]
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    volumes: [minio_data:/data]
+    ports:
+      - "127.0.0.1:${MONITOR_MINIO_PORT:-19000}:9000"
+      - "127.0.0.1:${MONITOR_MINIO_CONSOLE_PORT:-19001}:9001"
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [monitoring]
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        mc alias set local http://minio:9000 minio minio123
+        mc mb --ignore-existing local/mlflow-artifacts
+    networks: [monitoring]
+
+  mlflow:
+    build: ./mlflow
+    environment:
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: minio123
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    volumes: [mlflow_data:/mlflow]
+    ports: ["127.0.0.1:${MONITOR_MLFLOW_PORT:-15000}:5000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:5000/health]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [monitoring]
+
+  api:
+    build: ./api
+    ports: ["127.0.0.1:${MONITOR_API_PORT:-18010}:8000"]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: wine_quality_model
+      MODEL_STAGE: Production
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: minio123
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    depends_on:
+      mlflow: {condition: service_healthy}
+    # Liveness lets the first Airflow run deploy the initial model. /health is readiness.
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:8000/]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [monitoring]
+    restart: unless-stopped
+
+  evidently:
+    build: ./evidently
+    ports: ["127.0.0.1:${MONITOR_EVIDENTLY_PORT:-18011}:8001"]
+    volumes:
+      - evidently_data:/app/data
+      - evidently_reports:/app/reports
+      - evidently_reference:/app/reference
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:8001/health]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/evidently_alerts.yml:/etc/prometheus/evidently_alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports: ["127.0.0.1:${MONITOR_PROMETHEUS_PORT:-19091}:9090"]
+    networks: [monitoring]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:${MONITOR_GRAFANA_PORT:-13001}:3000"]
+    networks: [monitoring]
+    restart: unless-stopped
+
+  airflow-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes: [airflow_db:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD, pg_isready, -U, airflow]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [monitoring]
+
+  airflow-init:
+    <<: *airflow
+    command: python /opt/airflow/scripts/init_airflow.py
+    depends_on:
+      airflow-db: {condition: service_healthy}
+
+  airflow-webserver:
+    <<: *airflow
+    command: webserver
+    ports: ["127.0.0.1:${AIRFLOW_PORT:-18080}:8080"]
+    depends_on:
+      airflow-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:8080/health]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow
+    command: scheduler
+    depends_on:
+      airflow-init: {condition: service_completed_successfully}
+      mlflow: {condition: service_healthy}
+      api: {condition: service_healthy}
+      evidently: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 20s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    name: ${USER}_monitoring-postgres_data
+  minio_data:
+    name: ${USER}_monitoring-minio_data
+  mlflow_data:
+    name: ${USER}_monitoring-mlflow_data
+  prometheus_data:
+    name: ${USER}_monitoring-prometheus_data
+  grafana_data:
+    name: ${USER}_monitoring-grafana_data
+  evidently_data:
+    name: ${USER}_monitoring-evidently_data
+  evidently_reports:
+    name: ${USER}_monitoring-evidently_reports
+  evidently_reference:
+    name: ${USER}_monitoring-evidently_reference
+  airflow_db:
+  airflow_logs:
+  pipeline_data:
+
+networks:
+  monitoring:
