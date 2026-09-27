@@ -171,18 +171,22 @@ predicted cultivar class rates during the demo window (11:14-11:23 UTC).
 
 </details>
 
-<details>
-<summary>Historical Telegram screenshot from the initial manual demo</summary>
+### Telegram notifications from the automated demo
 
-The owner supplied this real bot-conversation screenshot for the earlier manual
-version. It shows training and drift messages from that version. Delivery for the
-new automated demo is documented separately in the
-[verification record](docs/automation-verification.md); this is not a new
-Telegram screenshot.
+These real bot-conversation screenshots were supplied by the owner. Their run IDs
+match the [pipeline record](docs/evidence/demo_report.json) and outage/recovery
+records. Telegram displays local UTC+7 time; Airflow run IDs use UTC.
 
-![Historical Telegram conversation showing training and drift notifications](screenshots/telegram-alerts-01.png)
+The first image shows the initial promotion to version 3, a baseline with no
+drift, detected drift triggering a child training run, and promotion to version 4
+with `Trigger: drift`.
 
-</details>
+![Telegram baseline, detected drift and automatically promoted model version 4](screenshots/automation/telegram-training-and-drift.png)
+
+The second image shows the rejected candidate, sustained drift alert, API health
+DOWN and RECOVERED messages, and Alertmanager's APIDown FIRING and RESOLVED pair.
+
+![Telegram quality-gate rejection and API outage-to-recovery notifications](screenshots/automation/telegram-alerts-and-recovery.png)
 
 ## Airflow behavior
 

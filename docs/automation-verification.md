@@ -58,8 +58,11 @@ in the final passing suite. They are not claimed as live crash-injection tests.
 
 ## Evidence and interpretation
 
-[12 current screenshots](../screenshots/automation/README.md) document the real
-interfaces. The earlier 15 images are retained and explicitly labeled historical.
+[14 current screenshots](../screenshots/automation/README.md) document the real
+interfaces, including two owner-supplied Telegram conversation captures. These
+show the training/drift workflow, rejected candidate, health DOWN/RECOVERED and
+Alertmanager FIRING/RESOLVED messages; their run IDs match the JSON evidence.
+The earlier 15 images are retained and explicitly labeled historical.
 Airflow UTC timestamps and browser-local UTC+7 timestamps differ by seven hours.
 
 The baseline deliberately matches the training distribution to make this a

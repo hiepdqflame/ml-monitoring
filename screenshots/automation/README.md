@@ -1,6 +1,7 @@
 # Automated pipeline evidence
 
-These 12 screenshots were captured from real Docker services on 2026-09-27.
+These 14 screenshots document the real Docker demonstration on 2026-09-27:
+12 browser captures and two Telegram screenshots supplied by the project owner.
 All images show actual UIs; no dashboard values or task statuses were rewritten.
 See [verification](../../docs/automation-verification.md) and the
 [machine-readable run record](../../docs/evidence/demo_report.json).
@@ -43,9 +44,27 @@ See [verification](../../docs/automation-verification.md) and the
   predicted cultivar class rates; selected range 11:14-11:23 UTC.
 - [Grafana drift](grafana_drift.png): feature drift count/share/history.
 
-The Telegram image in the parent directory is historical, supplied by the owner
-for the earlier manual version. New notification delivery was verified through
-Airflow task responses and Alertmanager counters (three Telegram sends, zero
-failures at the verification checkpoint); no new Telegram UI screenshot is claimed.
+## Telegram conversation
+
+- [Training and drift](telegram-training-and-drift.png): initial version 3 promotion,
+  NO DRIFT, DRIFT DETECTED with child run ID, and version 4 PROMOTED with `Trigger: drift`.
+  Parent run `manual_demo_20260927T111552_605130` and the child run match the workflow
+  screenshots and JSON evidence above.
+- [Alerts and recovery](telegram-alerts-and-recovery.png): candidate REJECTED,
+  DataDriftDetected FIRING, HEALTH DOWN (`manual_demo_20260927T111841_207979`),
+  APIDown FIRING, HEALTH RECOVERED (`manual_demo_20260927T112028_161214`) and
+  APIDown RESOLVED. The rejected candidate left Production unchanged.
+
+![Telegram training and drift notifications](telegram-training-and-drift.png)
+
+![Telegram rejection, operational alerts and recovery](telegram-alerts-and-recovery.png)
+
+The owner supplied these actual conversation screenshots. Run IDs were checked
+against the recorded demo; no bot token or private chat ID is visible. Times in
+Telegram are UTC+7, while run IDs use UTC. The Telegram image in the parent
+directory remains historical evidence of the earlier manual version.
+Delivery is also corroborated by Airflow task responses and Alertmanager counters
+(three Telegram sends, zero failures at the verification checkpoint).
+
 Training reused labeled Wine, so the drift alert correctly remained active after
 retraining. No claim is made that the new model repaired the shifted distribution.
