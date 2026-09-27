@@ -309,16 +309,3 @@ production system needs a shared transactional store and deployment locking.
 docker compose stop     # Stop this project; keep data.
 docker compose start   # Resume existing containers.
 ```
-
-## Reference projects and differences
-
-This teaching project builds on the monitoring exercises and was compared with:
-
-- [thaycacac/ddm501 tutorial07](https://github.com/thaycacac/ddm501/tree/b13ae9ce1e24a8c34916a2758c52f31c4618d0cf/tutorial07): three-DAG monitoring/retrain pattern and Alertmanager notifications.
-- [longbeebee/mlops-bonus-assignment-2](https://github.com/longbeebee/mlops-bonus-assignment-2/tree/55f243cbf9016fcc1c1822dc41eca20b57126a49): staged data/training/registration workflow and Docker Airflow integration.
-
-This version adds persistent dispatch recovery, deduplication, cooldown/quota,
-champion comparison, attempted rollback, training-only reference data, honest
-unlabeled-drift limitations, optional private Telegram configuration, automated
-assertions and reproducible evidence. It uses drift-triggered training rather than
-unconditionally training the same static dataset every day.
