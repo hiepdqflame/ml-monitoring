@@ -1,0 +1,39 @@
+{
+  "health": {
+    "dag": "service_health_check",
+    "run_id": "manual_demo_20260927T112028_161214",
+    "state": "success",
+    "tasks": {
+      "check_api": "success",
+      "check_mlflow": "success",
+      "check_evidently": "success",
+      "report": "success"
+    },
+    "result": {
+      "healthy": true,
+      "down": [],
+      "telegram": "delivered",
+      "services": [
+        {
+          "service": "api",
+          "healthy": true,
+          "detail": "HTTP 200, ready=True"
+        },
+        {
+          "service": "mlflow",
+          "healthy": true,
+          "detail": "HTTP 200"
+        },
+        {
+          "service": "evidently",
+          "healthy": true,
+          "detail": "HTTP 200, ready=True"
+        }
+      ]
+    }
+  },
+  "alerts": {
+    "prometheus_firing": false,
+    "alertmanager_active": false
+  }
+}

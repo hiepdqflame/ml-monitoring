@@ -1,4 +1,7 @@
-# Verification evidence
+# Historical verification: initial manual version
+
+The following checks describe commit `676125d`. Current automation evidence is
+recorded at the top of [automation-verification.md](automation-verification.md).
 
 Checks performed on 2026-09-27 using Docker Desktop on macOS ARM64.
 

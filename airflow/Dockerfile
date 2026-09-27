@@ -10,5 +10,6 @@ COPY --chown=airflow:root scripts /opt/airflow/scripts
 COPY --chown=airflow:root tests /opt/airflow/tests
 COPY --chown=airflow:root simulations /opt/airflow/simulations
 COPY --chown=airflow:root api /opt/airflow/api
+COPY --chown=airflow:root evidently/window_metadata.py /opt/airflow/evidently/window_metadata.py
 RUN mkdir -p /opt/airflow/pipeline_data
 ENV PYTHONPATH=/opt/airflow

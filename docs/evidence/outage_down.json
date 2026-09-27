@@ -1,0 +1,41 @@
+{
+  "health": {
+    "dag": "service_health_check",
+    "run_id": "manual_demo_20260927T111841_207979",
+    "state": "failed",
+    "tasks": {
+      "check_evidently": "success",
+      "check_mlflow": "success",
+      "check_api": "success",
+      "report": "failed"
+    },
+    "result": {
+      "healthy": false,
+      "down": [
+        "api"
+      ],
+      "telegram": "delivered",
+      "services": [
+        {
+          "service": "api",
+          "healthy": false,
+          "detail": "Unreachable or invalid health response"
+        },
+        {
+          "service": "mlflow",
+          "healthy": true,
+          "detail": "HTTP 200"
+        },
+        {
+          "service": "evidently",
+          "healthy": true,
+          "detail": "HTTP 200, ready=True"
+        }
+      ]
+    }
+  },
+  "alerts": {
+    "prometheus_firing": true,
+    "alertmanager_active": true
+  }
+}

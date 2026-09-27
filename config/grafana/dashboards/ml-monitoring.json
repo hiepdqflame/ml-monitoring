@@ -179,12 +179,13 @@
         "pluginVersion": "8.0.0",
         "targets": [
           {
-            "expr": "sum(rate(api_requests_total{status=~\"5..\"}[5m])) / sum(rate(api_requests_total[5m]))",
+            "expr": "((sum(rate(api_requests_total{status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(api_requests_total[5m])), 0.000001)) and on() (min(up{job=\"model-api\"}) == 1)",
             "refId": "A"
           }
         ],
         "title": "Error Rate",
-        "type": "stat"
+        "type": "stat",
+        "description": "Observed 5xx fraction while the scrape target is UP. No matching 5xx series means zero observed server errors; an unavailable target remains unknown."
       },
       {
         "datasource": "Prometheus",
@@ -557,22 +558,18 @@
         "datasource": "Prometheus",
         "fieldConfig": {
           "defaults": {
+            "unit": "reqps",
+            "min": 0,
             "color": {
-              "mode": "thresholds"
+              "mode": "palette-classic"
             },
             "custom": {
-              "align": "auto",
-              "displayMode": "auto"
-            },
-            "mappings": [],
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "color": "green",
-                  "value": null
-                }
-              ]
+              "drawStyle": "line",
+              "fillOpacity": 35,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              }
             }
           },
           "overrides": []
@@ -585,25 +582,46 @@
         },
         "id": 10,
         "options": {
-          "showHeader": true
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
         },
         "pluginVersion": "8.0.0",
         "targets": [
           {
-            "expr": "histogram_quantile(0.5, sum by(le) (rate(model_prediction_value_bucket[5m])))",
-            "format": "table",
-            "instant": true,
+            "expr": "sum(rate(model_prediction_value_bucket{le=\"0.0\"}[5m]))",
+            "legendFormat": "Cultivar 0",
             "refId": "A"
+          },
+          {
+            "expr": "clamp_min(sum(rate(model_prediction_value_bucket{le=\"1.0\"}[5m])) - sum(rate(model_prediction_value_bucket{le=\"0.0\"}[5m])), 0)",
+            "legendFormat": "Cultivar 1",
+            "refId": "B"
+          },
+          {
+            "expr": "clamp_min(sum(rate(model_prediction_value_bucket{le=\"2.0\"}[5m])) - sum(rate(model_prediction_value_bucket{le=\"1.0\"}[5m])), 0)",
+            "legendFormat": "Cultivar 2",
+            "refId": "C"
           }
         ],
-        "title": "Prediction Distribution (for Drift Detection)",
-        "type": "table"
+        "title": "Predicted cultivar classes (requests/sec)",
+        "type": "timeseries",
+        "description": "Non-cumulative class counts derived from histogram buckets. This is a prediction mix diagnostic, not feature drift or accuracy."
       }
     ],
     "refresh": "10s",
     "schemaVersion": 27,
     "style": "dark",
-    "tags": ["ml", "monitoring", "production"],
+    "tags": [
+      "ml",
+      "monitoring",
+      "production"
+    ],
     "templating": {
       "list": []
     },
@@ -616,4 +634,4 @@
     "title": "ML Model Monitoring",
     "uid": "ml-model-monitoring",
     "version": 0
-  }
+}

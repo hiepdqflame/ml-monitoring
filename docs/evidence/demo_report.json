@@ -1,0 +1,172 @@
+{
+  "created_at": "2026-09-27T11:15:25.482902+00:00",
+  "runs": {
+    "bootstrap": {
+      "dag": "wine_mlflow_pipeline",
+      "run_id": "manual_demo_20260927T111525_482908",
+      "state": "success",
+      "tasks": {
+        "split": "success",
+        "ingest": "success",
+        "keep_current_model": "skipped",
+        "validate": "success",
+        "quality_gate": "success",
+        "train": "success",
+        "evaluate": "success",
+        "promote_and_reload": "success",
+        "notify_result": "success",
+        "publish_reference": "success"
+      },
+      "result": {
+        "pipeline_status": "PROMOTED",
+        "telegram": "delivered",
+        "model_version": "3"
+      }
+    },
+    "health": {
+      "dag": "service_health_check",
+      "run_id": "manual_demo_20260927T111541_257026",
+      "state": "success",
+      "tasks": {
+        "check_api": "success",
+        "check_mlflow": "success",
+        "report": "success",
+        "check_evidently": "success"
+      },
+      "result": {
+        "healthy": true,
+        "down": [],
+        "telegram": "suppressed",
+        "services": [
+          {
+            "service": "api",
+            "healthy": true,
+            "detail": "HTTP 200, ready=True"
+          },
+          {
+            "service": "mlflow",
+            "healthy": true,
+            "detail": "HTTP 200"
+          },
+          {
+            "service": "evidently",
+            "healthy": true,
+            "detail": "HTTP 200, ready=True"
+          }
+        ]
+      }
+    },
+    "baseline": {
+      "dag": "wine_drift_check",
+      "run_id": "manual_demo_20260927T111545_342258",
+      "state": "success",
+      "tasks": {
+        "analyze": "success",
+        "decide_retrain": "success",
+        "no_retrain": "success",
+        "trigger_training": "skipped",
+        "notify_drift": "success"
+      },
+      "result": {
+        "status": "analyzed",
+        "telegram": "delivered",
+        "drift_detected": false,
+        "retrain": {
+          "trigger": false,
+          "reason": "no_drift"
+        },
+        "report_url": "/reports/drift_report_20260927_111546_918555.html"
+      }
+    },
+    "drift": {
+      "dag": "wine_drift_check",
+      "run_id": "manual_demo_20260927T111552_605130",
+      "state": "success",
+      "tasks": {
+        "analyze": "success",
+        "no_retrain": "skipped",
+        "decide_retrain": "success",
+        "notify_drift": "success",
+        "trigger_training": "success"
+      },
+      "result": {
+        "status": "analyzed",
+        "telegram": "delivered",
+        "drift_detected": true,
+        "retrain": {
+          "trigger": true,
+          "reason": "drift",
+          "run_id": "drift__9316d9ed3be0a7c583c885fcf891df3abb6f384eab4945fd54b0c3b89f7d7a17",
+          "window_id": "9316d9ed3be0a7c583c885fcf891df3abb6f384eab4945fd54b0c3b89f7d7a17"
+        },
+        "report_url": "/reports/drift_report_20260927_111554_040510.html"
+      }
+    },
+    "auto_training": {
+      "dag": "wine_mlflow_pipeline",
+      "run_id": "drift__9316d9ed3be0a7c583c885fcf891df3abb6f384eab4945fd54b0c3b89f7d7a17",
+      "state": "success",
+      "tasks": {
+        "validate": "success",
+        "split": "success",
+        "publish_reference": "success",
+        "ingest": "success",
+        "keep_current_model": "skipped",
+        "train": "success",
+        "quality_gate": "success",
+        "evaluate": "success",
+        "promote_and_reload": "success",
+        "notify_result": "success"
+      },
+      "result": {
+        "pipeline_status": "PROMOTED",
+        "telegram": "delivered",
+        "model_version": "4"
+      }
+    },
+    "repeat_window": {
+      "dag": "wine_drift_check",
+      "run_id": "manual_demo_20260927T111611_537074",
+      "state": "success",
+      "tasks": {
+        "analyze": "success",
+        "trigger_training": "skipped",
+        "decide_retrain": "success",
+        "no_retrain": "success",
+        "notify_drift": "success"
+      },
+      "result": {
+        "status": "skipped",
+        "reason": "unchanged_window",
+        "telegram": "suppressed",
+        "retrain": {
+          "trigger": false,
+          "reason": "unchanged_window"
+        }
+      }
+    },
+    "rejected": {
+      "dag": "wine_mlflow_pipeline",
+      "run_id": "manual_demo_20260927T111618_493877",
+      "state": "success",
+      "tasks": {
+        "ingest": "success",
+        "evaluate": "success",
+        "promote_and_reload": "skipped",
+        "quality_gate": "success",
+        "validate": "success",
+        "publish_reference": "skipped",
+        "keep_current_model": "success",
+        "split": "success",
+        "notify_result": "success",
+        "train": "success"
+      },
+      "result": {
+        "pipeline_status": "REJECTED",
+        "telegram": "delivered",
+        "model_version": null
+      }
+    }
+  },
+  "serving_version": "4"
+}

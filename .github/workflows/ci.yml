@@ -1,0 +1,46 @@
+name: Verify Docker MLOps Demo
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned Airflow image
+        run: docker build -f airflow/Dockerfile -t monitoring-tests .
+      - name: Test DAGs, training, guards and notifications without credentials
+        run: docker run --rm --entrypoint python monitoring-tests -m pytest /opt/airflow/tests -q -p no:cacheprovider
+  serving:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t serving-tests api
+      - name: Test readiness, schema and failed reload
+        run: >-
+          docker run --rm --entrypoint sh -e PYTHONPATH=/workspace
+          -v "$PWD:/workspace:ro" -w /workspace serving-tests
+          -c 'pip install --quiet pytest==8.3.5 httpx==0.25.2 && python -m pytest tests/test_serving.py -q -p no:cacheprovider'
+  monitoring-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose without Telegram
+        run: docker compose config --quiet
+      - name: Validate Prometheus rules
+        run: >-
+          docker run --rm --entrypoint promtool
+          -v "$PWD/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+          -v "$PWD/config/prometheus/evidently_alerts.yml:/etc/prometheus/evidently_alerts.yml:ro" prom/prometheus:v2.51.2
+          check config /etc/prometheus/prometheus.yml
+      - name: Validate optional Alertmanager config without real secrets
+        run: |
+          python3 - <<'PY'
+          import os
+          from scripts.render_alertmanager import render
+          render('/tmp/monitor-alerts', {})
+          os.chmod('/tmp/monitor-alerts/alertmanager.yml', 0o644)
+          PY
+          docker run --rm --entrypoint amtool -v /tmp/monitor-alerts:/etc/alertmanager/private:ro prom/alertmanager:v0.28.1 check-config /etc/alertmanager/private/alertmanager.yml

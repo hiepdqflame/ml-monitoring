@@ -8,15 +8,13 @@ global:
 
   # Attach these labels to any time series or alerts
   external_labels:
-    cluster: 'production'
+    cluster: 'local-demo'
     env: 'ml-monitoring'
 
-# Alertmanager configuration (optional)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets:
-#           - alertmanager:9093
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
 
 # Load rules once and periodically evaluate them
 rule_files:
@@ -25,6 +23,10 @@ rule_files:
 
 # Scrape configurations
 scrape_configs:
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+
   # ==========================================
   # PROMETHEUS SELF-MONITORING
   # ==========================================

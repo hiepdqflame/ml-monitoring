@@ -1,4 +1,8 @@
-# Live demonstration evidence
+# Historical manual-mode evidence
+
+These 15 images document the first manual-only version (commit `676125d`).
+For the upgraded scheduled system, see [current automation evidence](automation/README.md).
+Statements below describe that earlier version, not the current configuration.
 
 Captured on 2026-09-27 from the project's running Docker Compose services.
 The 14 browser screenshots show actual application pages. The Telegram screenshot

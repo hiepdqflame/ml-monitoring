@@ -28,6 +28,10 @@ x-airflow: &airflow
     TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    MONITOR_SCHEDULES_ENABLED: ${MONITOR_SCHEDULES_ENABLED:-true}
+    AUTO_RETRAIN_ENABLED: ${AUTO_RETRAIN_ENABLED:-true}
+    RETRAIN_COOLDOWN_SECONDS: ${RETRAIN_COOLDOWN_SECONDS:-21600}
+    RETRAIN_DAILY_LIMIT: ${RETRAIN_DAILY_LIMIT:-3}
     AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER:-admin}
     AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
   volumes:
@@ -146,6 +150,35 @@ services:
     networks: [monitoring]
     restart: unless-stopped
 
+  alertmanager-init:
+    image: ml-monitoring-airflow:local
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    user: "0:0"
+    entrypoint: [python, /opt/airflow/scripts/render_alertmanager.py]
+    environment:
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    volumes: [alertmanager_config:/etc/alertmanager/private]
+    networks: [monitoring]
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    command:
+      - --config.file=/etc/alertmanager/private/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --cluster.listen-address=
+    volumes:
+      - alertmanager_config:/etc/alertmanager/private:ro
+      - alertmanager_data:/alertmanager
+    ports: ["127.0.0.1:${MONITOR_ALERTMANAGER_PORT:-19093}:9093"]
+    depends_on:
+      alertmanager-init: {condition: service_completed_successfully}
+    networks: [monitoring]
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:10.4.2
     environment:
@@ -228,6 +261,8 @@ volumes:
   airflow_db:
   airflow_logs:
   pipeline_data:
+  alertmanager_config:
+  alertmanager_data:
 
 networks:
   monitoring:

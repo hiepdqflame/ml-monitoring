@@ -1,5 +1,6 @@
-"""Trigger a manual DAG through Airflow's API and report its actual final state."""
+"""Trigger/wait through Airflow's REST API; assert the real terminal state."""
 import argparse
+import ast
 from datetime import datetime, timezone
 import json
 import os
@@ -7,44 +8,66 @@ import time
 
 import requests
 
+DAGS = ['wine_mlflow_pipeline', 'wine_drift_check', 'service_health_check']
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('dag', choices=['wine_mlflow_pipeline', 'wine_drift_check'])
-    parser.add_argument('--conf', default='{}')
-    parser.add_argument('--expect-failure', action='store_true')
-    args = parser.parse_args()
-    conf = json.loads(args.conf)
+
+def airflow_session():
     session = requests.Session()
     session.auth = (os.getenv('AIRFLOW_ADMIN_USER', 'admin'), os.environ['AIRFLOW_ADMIN_PASSWORD'])
-    base = 'http://airflow-webserver:8080/api/v1/dags/' + args.dag
-    run_id = 'manual_demo_' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%f')
-    response = session.post(base + '/dagRuns', json={'dag_run_id': run_id, 'conf': conf}, timeout=15)
-    response.raise_for_status()
-    print('Triggered:', args.dag, run_id, flush=True)
-    deadline = time.monotonic() + 1200
+    return session
+
+
+def wait_for_run(dag, run_id, expected='success', timeout=1200):
+    session = airflow_session()
+    base = 'http://airflow-webserver:8080/api/v1/dags/' + dag + '/dagRuns/' + run_id
+    deadline = time.monotonic() + timeout
     previous = None
     while time.monotonic() < deadline:
-        response = session.get(base + '/dagRuns/' + run_id, timeout=15)
+        response = session.get(base, timeout=15)
         response.raise_for_status()
         state = response.json()['state']
         if state != previous:
-            print('DAG state:', state, flush=True)
+            print(dag, run_id, state, flush=True)
             previous = state
         if state in ('success', 'failed'):
-            tasks = session.get(base + '/dagRuns/' + run_id + '/taskInstances', timeout=15)
+            tasks = session.get(base + '/taskInstances', timeout=15)
             tasks.raise_for_status()
-            print(json.dumps({t['task_id']: t['state'] for t in tasks.json()['task_instances']}, indent=2), flush=True)
-            final_task = 'notify_result' if args.dag == 'wine_mlflow_pipeline' else 'notify_drift'
-            result = session.get(base + '/dagRuns/' + run_id + '/taskInstances/' + final_task + '/xcomEntries/return_value', timeout=15)
-            if result.ok:
-                print('Result:', result.json()['value'], flush=True)
-            expected = 'failed' if args.expect_failure else 'success'
+            states = {t['task_id']: t['state'] for t in tasks.json()['task_instances']}
+            task = {'wine_mlflow_pipeline': 'notify_result', 'wine_drift_check': 'notify_drift',
+                    'service_health_check': 'report'}[dag]
+            key = 'health_result' if dag == 'service_health_check' else 'return_value'
+            result = session.get(base + '/taskInstances/' + task + '/xcomEntries/' + key, timeout=15)
+            value = result.json()['value'] if result.ok else None
+            if isinstance(value, str):
+                value = ast.literal_eval(value)
+            output = {'dag': dag, 'run_id': run_id, 'state': state, 'tasks': states, 'result': value}
+            print(json.dumps(output, indent=2), flush=True)
             if state != expected:
-                raise RuntimeError('Expected ' + expected + ', observed ' + state + '; inspect Airflow task logs')
-            return
+                raise RuntimeError(f'Expected {expected}, observed {state}; inspect task logs for {run_id}')
+            return output
         time.sleep(3)
-    raise TimeoutError('DAG did not finish in 20 minutes')
+    raise TimeoutError(f'DAG {dag}/{run_id} did not finish within {timeout} seconds')
+
+
+def run_dag(dag, conf=None, expected='success'):
+    run_id = 'manual_demo_' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S_%f')
+    session = airflow_session()
+    base = 'http://airflow-webserver:8080/api/v1/dags/' + dag
+    # A fresh clone or an intentionally paused demo DAG must be runnable.
+    response = session.patch(base, json={'is_paused': False}, timeout=15)
+    response.raise_for_status()
+    response = session.post(base + '/dagRuns', json={'dag_run_id': run_id, 'conf': conf or {}}, timeout=15)
+    response.raise_for_status()
+    return wait_for_run(dag, run_id, expected)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dag', choices=DAGS)
+    parser.add_argument('--conf', default='{}')
+    parser.add_argument('--expect-failure', action='store_true')
+    args = parser.parse_args()
+    run_dag(args.dag, json.loads(args.conf), 'failed' if args.expect_failure else 'success')
 
 
 if __name__ == '__main__':

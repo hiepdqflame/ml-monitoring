@@ -10,7 +10,7 @@ This service provides:
 4. Prometheus metrics exposure
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
@@ -19,6 +19,9 @@ import numpy as np
 import logging
 import os
 import json
+import time
+import uuid
+from window_metadata import describe_window
 from datetime import datetime
 from pathlib import Path
 
@@ -147,6 +150,8 @@ class DataStore:
         self.production_data: List[Dict] = []
         self.last_analysis_time: Optional[datetime] = None
         self.reference_metadata: Dict = {}
+        self.epoch = uuid.uuid4().hex
+        self.cursor = 0
 
         # Load reference data if exists
         self._load_reference_data()
@@ -188,7 +193,8 @@ class DataStore:
 
     def add_production_data(self, data: Dict):
         """Add production data point"""
-        self.production_data.append(data)
+        self.cursor += 1
+        self.production_data.append({**data, '_received_at': time.time()})
 
         # Keep only last 10000 samples to avoid memory issues
         if len(self.production_data) > 10000:
@@ -205,6 +211,8 @@ class DataStore:
     def clear_production_data(self):
         """Clear production data"""
         self.production_data = []
+        self.epoch = uuid.uuid4().hex
+        self.cursor = 0
         logger.info("🗑️ Cleared production data")
 
 # Initialize data store
@@ -301,6 +309,14 @@ async def capture_batch(data: BatchPredictionData):
         logger.error(f"Error capturing batch: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get('/window-status')
+async def window_status(window_size: int = Query(100, ge=30, le=10000)):
+    rows = data_store.production_data[-window_size:]
+    features = list(data_store.reference_data.columns) if data_store.reference_data is not None else []
+    return describe_window(rows, features, data_store.epoch, data_store.cursor,
+                           data_store.reference_data is not None)
+
+
 @app.post("/analyze")
 async def analyze_drift(
     request: DriftAnalysisRequest = DriftAnalysisRequest(),
@@ -323,6 +339,8 @@ async def analyze_drift(
                 status_code=400,
                 detail="No production data available for analysis"
             )
+
+        metadata = await window_status(request.window_size)
 
         logger.info(f"🔍 Starting drift analysis...")
         logger.info(f"   Reference samples: {len(data_store.reference_data)}")
@@ -348,7 +366,7 @@ async def analyze_drift(
 
         logger.info(f"✅ Analysis completed in {duration:.2f}s")
 
-        return result
+        return {**result, **metadata}
 
     except HTTPException:
         raise
@@ -458,14 +476,14 @@ def perform_drift_analysis(
 
     try:
         # Align columns
-        common_cols = list(set(reference_data.columns) & set(current_data.columns))
+        common_cols = [col for col in reference_data.columns if col in current_data.columns]
 
         # Remove non-numeric columns and metadata columns
         exclude_cols = ['prediction', 'timestamp', 'model_version']
         feature_cols = [col for col in common_cols if col not in exclude_cols]
 
-        if not feature_cols:
-            raise ValueError("No common features found between reference and current data")
+        if len(feature_cols) != len(reference_data.columns):
+            raise ValueError("Production data must include every reference feature")
 
         ref_df = reference_data[feature_cols].copy()
         curr_df = current_data[feature_cols].copy()
@@ -524,7 +542,7 @@ def perform_drift_analysis(
         DRIFTED_FEATURES_COUNT.set(len(drifted_features))
 
         # Save HTML report
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         report_filename = f"drift_report_{timestamp}.html"
         report_path = REPORTS_DIR / report_filename
         report.save_html(str(report_path))

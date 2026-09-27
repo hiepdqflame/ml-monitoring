@@ -33,11 +33,11 @@ def production_version(client):
     return versions[0].version if versions else None
 
 
-def ingest(run_id):
+def ingest(run_id, provenance=None):
     directory = Path(os.getenv('PIPELINE_DATA_DIR', '/opt/airflow/pipeline_data')) / hashlib.sha256(run_id.encode()).hexdigest()[:24]
     directory.mkdir(parents=True, exist_ok=True)
     load_dataset().to_csv(directory / 'raw.csv', index=False)
-    return {'directory': str(directory), 'airflow_run_id': run_id}
+    return {'directory': str(directory), 'airflow_run_id': run_id, 'provenance': provenance or {}}
 
 
 def validate(run):
@@ -67,7 +67,11 @@ def train(run, params):
     with mlflow.start_run(run_name=run['airflow_run_id']) as active:
         mlflow.log_params({**settings, 'train_rows': len(frame), 'features': len(FEATURE_NAMES)})
         mlflow.set_tags({'airflow_run_id': run['airflow_run_id'], 'data_sha256': validation['sha256'],
-                         'dataset': 'sklearn.datasets.load_wine', 'purpose': 'manual-demo'})
+                         'dataset': 'sklearn.datasets.load_wine', 'purpose': 'lifecycle-demo',
+                         'trigger_source': run.get('provenance', {}).get('trigger_source', 'manual'),
+                         'source_drift_run': run.get('provenance', {}).get('source_drift_run', ''),
+                         'source_window': run.get('provenance', {}).get('source_window', ''),
+                         'training_data_policy': 'built-in labeled Wine; not unlabeled inference data'})
         mlflow.sklearn.log_model(model, 'model', input_example=frame[FEATURE_NAMES].iloc[:3],
                                 signature=mlflow.models.infer_signature(frame[FEATURE_NAMES], model.predict(frame[FEATURE_NAMES])),
                                 pip_requirements=['scikit-learn==1.3.2', 'numpy==1.24.3',
@@ -141,8 +145,22 @@ def publish_reference(result):
 
 
 def analyze_drift(params):
-    response = requests.post(os.getenv('EVIDENTLY_URL', 'http://evidently:8001') + '/analyze', json={
+    from pipeline.automation import AutomationStore
+    base = os.getenv('EVIDENTLY_URL', 'http://evidently:8001')
+    store = AutomationStore()
+    status = requests.get(base + '/window-status', params={'window_size': int(params.get('window_size', 100))}, timeout=15)
+    status.raise_for_status()
+    reason = store.analysis_reason(status.json())
+    if reason in ('ready', 'unchanged_window', 'insufficient_new_samples'):
+        pending = store.recover_analysis(status.json())
+        if pending:
+            return pending
+    if reason != 'ready':
+        return {'status': 'skipped', 'reason': reason, **status.json()}
+    response = requests.post(base + '/analyze', json={
         'window_size': int(params.get('window_size', 100)), 'threshold': float(params.get('drift_threshold', .3)),
     }, timeout=120)
     response.raise_for_status()
-    return response.json()
+    result = response.json()
+    store.record_analysis(result)
+    return result
