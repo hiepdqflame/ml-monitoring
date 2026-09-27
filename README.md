@@ -84,6 +84,106 @@ Change host ports with the documented variables in `.env.example`. Internal
 container URLs use Compose service names. These credentials are local teaching
 defaults; the stack is not configured as a public production deployment.
 
+## Live demonstration screenshots
+
+Captured from the running Docker stack on **2026-09-27**. The screenshots below
+document the automated version; exact run IDs and outcomes are available in the
+[evidence index](screenshots/automation/README.md) and
+[JSON run record](docs/evidence/demo_report.json).
+
+### Scheduled Airflow and automatic retraining
+
+Three enabled DAGs: health checks every 15 minutes, hourly drift analysis, and
+training triggered manually or by the drift DAG.
+
+![Airflow DAG list showing the three workflows and their schedules](screenshots/automation/airflow_schedules.png)
+
+The drift run took the `trigger_training` branch after passing the retraining
+policy checks. Its child training run promoted model version 4.
+
+![Successful drift analysis triggering the training DAG](screenshots/automation/drift_triggers_training.png)
+
+<details>
+<summary>View the child training run and repeated-window protection</summary>
+
+The child completed validation, training, evaluation, promotion, reference
+publication and notification.
+
+![Successful automatically triggered training pipeline](screenshots/automation/automatic_training.png)
+
+Checking the same window again skipped training. The recorded reason was
+`unchanged_window`, and the repeated notification was suppressed.
+
+![Repeated data window taking the no-retrain branch](screenshots/automation/repeated_window_skipped.png)
+
+</details>
+
+### MLflow model lifecycle
+
+Version 4 is in Production; earlier versions are Archived. The deliberately weak
+candidate was rejected before registration and did not replace the serving model.
+
+![MLflow registry with version 4 in Production](screenshots/automation/mlflow_production_v4.png)
+
+### Operational alerts and recovery
+
+Alertmanager received real `APIDown` and `DataDriftDetected` alerts and routed
+them to Telegram. The API was intentionally stopped for the outage test and
+restored afterward; `APIDown` then resolved.
+
+![Alertmanager showing API-down and sustained-drift alerts](screenshots/automation/alertmanager_firing.png)
+
+<details>
+<summary>View the failed health check, recovery and healthy scrape targets</summary>
+
+The final health-report task failed the DAG when the API was down, even though
+the DOWN notification was delivered successfully.
+
+![Airflow health check correctly failing during the API outage](screenshots/automation/health_failure.png)
+
+After the API restarted, the health DAG succeeded and sent RECOVERED.
+
+![Successful service health check after API recovery](screenshots/automation/health_recovery.png)
+
+All four Prometheus targets were UP at the final verification checkpoint.
+
+![Prometheus targets for API, Evidently, Alertmanager and Prometheus all UP](screenshots/automation/prometheus_targets.png)
+
+</details>
+
+### Feature drift and serving metrics
+
+Evidently detected drift in all 13 features of the shifted 142-row window.
+Retraining reused the labeled Wine dataset, so this is evidence of the automated
+lifecycle, not proof that the model repaired the shifted distribution.
+
+![Evidently report showing 13 of 13 drifted features](screenshots/automation/evidently_drift.png)
+
+Grafana displays actual request rates, latency, observed server errors and
+predicted cultivar class rates during the demo window (11:14-11:23 UTC).
+
+![Grafana serving dashboard with historical traffic and class prediction rates](screenshots/automation/grafana_traffic.png)
+
+<details>
+<summary>View the detailed drift dashboard</summary>
+
+![Grafana drift dashboard with feature counts, drift share and analysis history](screenshots/automation/grafana_drift.png)
+
+</details>
+
+<details>
+<summary>Historical Telegram screenshot from the initial manual demo</summary>
+
+The owner supplied this real bot-conversation screenshot for the earlier manual
+version. It shows training and drift messages from that version. Delivery for the
+new automated demo is documented separately in the
+[verification record](docs/automation-verification.md); this is not a new
+Telegram screenshot.
+
+![Historical Telegram conversation showing training and drift notifications](screenshots/telegram-alerts-01.png)
+
+</details>
+
 ## Airflow behavior
 
 - **`service_health_check`** runs every 15 minutes (`*/15 * * * *`, UTC). It checks
