@@ -61,8 +61,7 @@ See [verification](../../docs/automation-verification.md) and the
 
 The owner supplied these actual conversation screenshots. Run IDs were checked
 against the recorded demo; no bot token or private chat ID is visible. Times in
-Telegram are UTC+7, while run IDs use UTC. The Telegram image in the parent
-directory remains historical evidence of the earlier manual version.
+Telegram are UTC+7, while run IDs use UTC.
 Delivery is also corroborated by Airflow task responses and Alertmanager counters
 (three Telegram sends, zero failures at the verification checkpoint).
 
